@@ -16,15 +16,52 @@
 #define NUM_BARS 64.0
 const float PI = 3.14159265359;
 
-void mainImage(out vec4 fragColor, in vec2 fragCoord)
-{
+// simple hash for pseudo-random star positions
+float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+}
+
+// radial starfield with varied speed and brightness
+float radialStars(vec2 uv, float time, float radiusStart) {
+    float brightness = 0.0;
+    int STAR_COUNT = 150; // more stars for richer effect
+
+    for (int i = 0; i < STAR_COUNT; i++) {
+        // pseudo-random angle, initial radius, speed, and brightness
+        float rnd = hash(vec2(float(i), 0.0));
+        float angle = hash(vec2(float(i), 1.0)) * 2.0 * PI;
+        float r0 = hash(vec2(float(i), 2.0));
+        float speed = 0.1 + hash(vec2(float(i), 3.0)) * 0.3;   // varied speed
+        float starBright = 0.5 + hash(vec2(float(i), 4.0)) * 0.8; // varied brightness
+
+        // linear radial motion outward
+        float r = r0 + time * speed;
+        r = mod(r, 1.0);
+
+        // convert polar to Cartesian
+        vec2 starPos = vec2(cos(angle), sin(angle)) * r;
+
+        // distance from current pixel
+        float d = length(uv - starPos);
+        float star = smoothstep(0.015, 0.0, d) * starBright;
+
+        // mask: only outside circle radius
+        if (length(uv) < radiusStart) star = 0.0;
+
+        brightness += star;
+    }
+
+    return brightness;
+}
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     // ===== Parameters =====
-    float baseRadius = 0.2;      // base circle radius
-    float circleWidth = 0.01;    // thickness used for ring intensity
-    float colorSpeed = 2.0;      // color animation speed
-    float bassScale = 0.15;      // how much the circle radius bounces with bass
-    float maxBarLength = 0.2;    // maximum outward bar length
-    float barGap = 0.03;         // space between circle and bar start
+    float baseRadius = 0.2;
+    float circleWidth = 0.01;
+    float colorSpeed = 2.0;
+    float bassScale = 0.15;
+    float maxBarLength = 0.2;
+    float barGap = 0.03;
 
     // ===== Normalized coordinates =====
     vec2 uv = fragCoord.xy / iResolution.xy;
@@ -32,8 +69,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord)
     uv.x *= iResolution.x / iResolution.y;
 
     float dist = length(uv);
-    float angle = atan(uv.y, uv.x); // -PI..PI
-    float angleNorm = (angle + PI) / (2.0 * PI); // 0..1
+    float angle = atan(uv.y, uv.x);
+    float angleNorm = (angle + PI) / (2.0 * PI);
 
     // ===== Sample low-frequency "bass" =====
     float bass = 0.0;
@@ -58,12 +95,10 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord)
     float barAngleWidth = (2.0 * PI) / NUM_BARS;
     float barAngleCenter = (barIndex + 0.5) * barAngleWidth - PI;
 
-    // Angular mask
     float angleDist = abs(angle - barAngleCenter);
     angleDist = min(angleDist, PI - angleDist);
     float barMask = smoothstep(barAngleWidth * 0.65, barAngleWidth * 0.12, angleDist);
 
-    // Radial mask — bars start slightly *after* the circle (barGap)
     float barStart = circleRadius + barGap;
     float barEnd   = barStart + barLength;
 
@@ -71,16 +106,17 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord)
     float radialOuter = 1.0 - smoothstep(barEnd - 0.006, barEnd + 0.006, dist);
     float inBar = radialInner * radialOuter;
 
-    // ===== Circle outline (bouncing) =====
+    // ===== Circle outline =====
     float ring = circleWidth / max(0.0001, abs(dist - circleRadius));
     float circle = clamp(ring, 0.0, 1.6);
 
-    // ===== Combine circle and bars =====
-    float visual = max(circle, inBar * barMask);
-
     // ===== Animated color =====
     vec3 col = 0.5 + 0.5 * cos(colorSpeed * iTime + uv.xyx + vec3(0, 2, 4));
-    col *= visual;
+    col *= max(circle, inBar * barMask);
+
+    // ===== Starfield (same color as circle, radial motion) =====
+    float stars = radialStars(uv, iTime, circleRadius);
+    col += col * stars * 1.5; // brighter stars
 
     fragColor = vec4(col, 1.0);
 }
