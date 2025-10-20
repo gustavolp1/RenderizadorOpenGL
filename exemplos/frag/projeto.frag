@@ -20,7 +20,7 @@ float radialStars(vec2 uv, float time, float radiusStart) {
         float r = r0 + time * speed;
         r = mod(r, 1.0);
 
-        // convert polar to Cartesian
+        // convert polar to cartesian
         vec2 starPos = vec2(cos(angle), sin(angle)) * r;
 
         // distance from current pixel
@@ -38,7 +38,7 @@ float radialStars(vec2 uv, float time, float radiusStart) {
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
-    // Params
+    // params
     float baseRadius = 0.2;
     float circleWidth = 0.01;
     float colorSpeed = 2.0;
@@ -46,17 +46,14 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     float maxBarLength = 0.2;
     float barGap = 0.03;
     float num_bars = 64.0;
+    float displacementStrength = 0.02;
 
-    // Normalized coordinates
+    // normalized coordinates
     vec2 uv = fragCoord.xy / iResolution.xy;
     uv -= 0.5;
     uv.x *= iResolution.x / iResolution.y;
 
-    float dist = length(uv);
-    float angle = atan(uv.y, uv.x);
-    float angleNorm = (angle + PI) / (2.0 * PI);
-
-    // Sample low freq
+    // sample low freq
     float bass = 0.0;
     for (int i = 0; i < 8; i++) {
         bass += texture(iChannel0, vec2(float(i) / 256.0, 0.0)).r;
@@ -64,10 +61,19 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     bass /= 8.0;
     bass = pow(bass, 2.0);
 
-    // Bouncing circle radius
+    // uv displacement (camera shake/zoom)
+    float displacement = bass * displacementStrength;
+    uv *= (1.0 - displacement); // zoom effect
+    uv += vec2(sin(iTime * 10.0) * displacement * 0.1, cos(iTime * 12.0) * displacement * 0.1); // subtle shake
+
+    float dist = length(uv);
+    float angle = atan(uv.y, uv.x);
+    float angleNorm = (angle + PI) / (2.0 * PI);
+
+    // bouncing circle radius
     float circleRadius = baseRadius + bass * bassScale;
 
-    // Bars
+    // bars
     float rawIndex = floor(angleNorm * num_bars);
     float barIndex = mod(rawIndex, num_bars);
 
@@ -90,35 +96,33 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     float radialOuter = 1.0 - smoothstep(barEnd - 0.006, barEnd + 0.006, dist);
     float inBar = radialInner * radialOuter;
 
-    // Circle outline
+    // circle outline
     float ring = circleWidth / max(0.0001, abs(dist - circleRadius));
     float circle = clamp(ring, 0.0, 1.6);
 
-    // 1. Calculate the original hard shape
+    // hard shape
     float shape = max(circle, inBar * barMask);
 
-    // 2. Calculate a fatter, fainter "glow" version of the shapes
-    
-    // Glow for Circle
+    // glow for circle
     float glow_circle = smoothstep(circleWidth + 0.04, circleWidth * 0.5, abs(dist - circleRadius));
 
-    // Glow for Bars (SDF for polar rectangle, but wider)
+    // glow for bars
     float glowRadialInner = smoothstep(barStart - 0.02, barStart + 0.02, dist);
     float glowRadialOuter = 1.0 - smoothstep(barEnd - 0.02, barEnd + 0.02, dist);
     float glowAngleMask = smoothstep(barAngleWidth * 0.8, barAngleWidth * 0.1, angleDist);
     float glow_bar = (glowRadialInner * glowRadialOuter) * glowAngleMask;
 
-    // 3. Combine glows and set intensity
-    float glow = max(glow_circle, glow_bar) * 0.4; // 0.4 glow intensity
+    // combined glow
+    float glow = max(glow_circle, glow_bar) * 0.4;
 
-    // Animated color
+    // animated color
     vec3 col = 0.5 + 0.5 * cos(colorSpeed * iTime + uv.xyx + vec3(0, 2, 4));
     
-    // 4. Apply both shape and glow to the color
+    // apply shape and glow to color
     col *= (shape + glow);
 
-    // Starfield
-    float stars = radialStars(uv, iTime, circleRadius);
+    // starfield
+    float stars = radialStars(uv, iTime, circleRadius); 
     col += col * stars * 1.5;
 
     fragColor = vec4(col, 1.0);
