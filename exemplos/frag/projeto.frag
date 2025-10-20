@@ -1,18 +1,3 @@
-// Created by inigo quilez - iq/2013
-// https://www.youtube.com/c/InigoQuilez
-// https://iquilezles.org/
-
-// See also:
-//
-// Input - Keyboard    : https://www.shadertoy.com/view/lsXGzf
-// Input - Microphone  : https://www.shadertoy.com/view/llSGDh
-// Input - Mouse       : https://www.shadertoy.com/view/Mss3zH
-// Input - Sound       : https://www.shadertoy.com/view/Xds3Rr
-// Input - SoundCloud  : https://www.shadertoy.com/view/MsdGzn
-// Input - Time        : https://www.shadertoy.com/view/lsXGz8
-// Input - TimeDelta   : https://www.shadertoy.com/view/lsKGWV
-// Inout - 3D Texture  : https://www.shadertoy.com/view/4llcR4
-
 const float PI = 3.14159265359;
 
 // simple hash for pseudo-random star positions
@@ -109,9 +94,28 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     float ring = circleWidth / max(0.0001, abs(dist - circleRadius));
     float circle = clamp(ring, 0.0, 1.6);
 
+    // 1. Calculate the original hard shape
+    float shape = max(circle, inBar * barMask);
+
+    // 2. Calculate a fatter, fainter "glow" version of the shapes
+    
+    // Glow for Circle
+    float glow_circle = smoothstep(circleWidth + 0.04, circleWidth * 0.5, abs(dist - circleRadius));
+
+    // Glow for Bars (SDF for polar rectangle, but wider)
+    float glowRadialInner = smoothstep(barStart - 0.02, barStart + 0.02, dist);
+    float glowRadialOuter = 1.0 - smoothstep(barEnd - 0.02, barEnd + 0.02, dist);
+    float glowAngleMask = smoothstep(barAngleWidth * 0.8, barAngleWidth * 0.1, angleDist);
+    float glow_bar = (glowRadialInner * glowRadialOuter) * glowAngleMask;
+
+    // 3. Combine glows and set intensity
+    float glow = max(glow_circle, glow_bar) * 0.4; // 0.4 glow intensity
+
     // Animated color
     vec3 col = 0.5 + 0.5 * cos(colorSpeed * iTime + uv.xyx + vec3(0, 2, 4));
-    col *= max(circle, inBar * barMask);
+    
+    // 4. Apply both shape and glow to the color
+    col *= (shape + glow);
 
     // Starfield
     float stars = radialStars(uv, iTime, circleRadius);
