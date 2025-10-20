@@ -20,12 +20,17 @@ float radialStars(vec2 uv, float time, float radiusStart) {
         float r = r0 + time * speed;
         r = mod(r, 1.0);
 
+        // new: add a lifetime fade
+        float fadeIn = smoothstep(0.0, 0.1, r); 
+        float fadeOut = (1.0 - smoothstep(0.8, 1.0, r)); 
+        float lifetime = fadeIn * fadeOut;
+
         // convert polar to cartesian
         vec2 starPos = vec2(cos(angle), sin(angle)) * r;
 
         // distance from current pixel
         float d = length(uv - starPos);
-        float star = smoothstep(0.015, 0.0, d) * starBright;
+        float star = smoothstep(0.015, 0.0, d) * starBright * lifetime; // applied lifetime
 
         // mask only outside circle radius
         if (length(uv) < radiusStart) star = 0.0;
@@ -34,6 +39,17 @@ float radialStars(vec2 uv, float time, float radiusStart) {
     }
 
     return brightness;
+}
+
+// sdf for an equilateral triangle
+float sdEquiTriangle( vec2 p, float r )
+{
+    float k = sqrt(3.0);
+    p.x = abs(p.x) - r;
+    p.y = p.y + r/k;
+    if( p.x+k*p.y > 0.0 ) p = vec2(p.x-k*p.y,-k*p.x-p.y)/2.0;
+    p.x -= clamp( p.x, -2.0*r, 0.0 );
+    return -length(p)*sign(p.y);
 }
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
@@ -100,8 +116,21 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     float ring = circleWidth / max(0.0001, abs(dist - circleRadius));
     float circle = clamp(ring, 0.0, 1.6);
 
+    // --- new shape: rotating triangle ---
+    float rotAngle = iTime * 0.5 + bass * 5.0; 
+    float c = cos(rotAngle);
+    float s = sin(rotAngle);
+    vec2 uv_tri = uv * mat2(c, -s, s, c); 
+    
+    float triRadius = 0.08 + bass * 0.08;
+    float triSDF = sdEquiTriangle(uv_tri, triRadius);
+    float triangle = 1.0 - smoothstep(0.0, 0.005, triSDF); // hard shape
+    
+    // new: glow for triangle
+    float glow_triangle = 1.0 - smoothstep(0.0, 0.04, triSDF); // soft, fat shape
+
     // hard shape
-    float shape = max(circle, inBar * barMask);
+    float shape = max(circle, max(inBar * barMask, triangle));
 
     // glow for circle
     float glow_circle = smoothstep(circleWidth + 0.04, circleWidth * 0.5, abs(dist - circleRadius));
@@ -113,7 +142,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     float glow_bar = (glowRadialInner * glowRadialOuter) * glowAngleMask;
 
     // combined glow
-    float glow = max(glow_circle, glow_bar) * 0.4;
+    // modified: added triangle glow
+    float glow = max(max(glow_circle, glow_bar), glow_triangle) * 0.4;
 
     // animated color
     vec3 col = 0.5 + 0.5 * cos(colorSpeed * iTime + uv.xyx + vec3(0, 2, 4));
