@@ -22,7 +22,7 @@ float radialStars(vec2 uv, float time, float radiusStart) {
 
         // new: add a lifetime fade
         float fadeIn = smoothstep(0.0, 0.1, r); 
-        float fadeOut = (1.0 - smoothstep(0.8, 1.0, r)); 
+        float fadeOut = (1.0 - smoothstep(0.2, 1.0, r)); 
         float lifetime = fadeIn * fadeOut;
 
         // convert polar to cartesian
@@ -138,22 +138,27 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     // glow for bars
     float glowRadialInner = smoothstep(barStart - 0.02, barStart + 0.02, dist);
     float glowRadialOuter = 1.0 - smoothstep(barEnd - 0.02, barEnd + 0.02, dist);
-    float glowAngleMask = smoothstep(barAngleWidth * 0.8, barAngleWidth * 0.1, angleDist);
+    float glowAngleMask = smoothstep(barAngleWidth * 8.0, barAngleWidth * 0.1, angleDist); // made glow wider
     float glow_bar = (glowRadialInner * glowRadialOuter) * glowAngleMask;
 
     // combined glow
-    // modified: added triangle glow
     float glow = max(max(glow_circle, glow_bar), glow_triangle) * 0.4;
 
+    // --- modification start ---
+    
     // animated color
-    vec3 col = 0.5 + 0.5 * cos(colorSpeed * iTime + uv.xyx + vec3(0, 2, 4));
+    vec3 base_col = 0.5 + 0.5 * cos(colorSpeed * iTime + uv.xyx + vec3(0, 2, 4));
     
     // apply shape and glow to color
-    col *= (shape + glow);
+    vec3 col = base_col * (shape + glow);
 
     // starfield
     float stars = radialStars(uv, iTime, circleRadius); 
-    col += col * stars * 1.5;
+    
+    // add stars using the base color, so they are visible in empty space
+    col += base_col * stars * 1.5; 
+
+    // --- modification end ---
 
     fragColor = vec4(col, 1.0);
 }
